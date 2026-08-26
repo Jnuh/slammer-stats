@@ -1,0 +1,506 @@
+<!doctype html>
+<!--
+  PROTOTYPE — throwaway code, not production.
+  Round 2: List Rows won the first pass (see git history / handoff for the
+  earlier 3-layout comparison). This round answers a narrower question: the
+  real Stat Line will likely grow past the 5 fields in CONTEXT.md (goals,
+  assists, saves, duels won, duels lost) — how does a scrollable list of
+  player rows stay tappable once there are 10+ stat types? Three approaches,
+  same shell (clock/score/bench), same 12-player roster:
+    A - Inline Expand: core 5 always visible per row; a "More" toggle expands
+        that row in place to reveal the rest as smaller chips.
+    B - Quick Bar + Sheet: user picks (up to 5) which stats show inline across
+        every row via an editable "loadout"; a per-row "More" opens a full
+        bottom sheet with every stat for that player.
+    C - Row Tap + Sheet: rows stay minimal (name + the 2 highest-frequency
+        taps + a running text summary); tapping the row opens the full sheet.
+  The 6 "extra" stats (Shot, Tackle Won, Interception, Foul Committed, Foul
+  Won, Clearance) are placeholders to get past 5 fields for testing — not a
+  domain decision. If a shape here wins, CONTEXT.mds Stat Line definition
+  needs a matching update before this is real.
+  Switch variants with the floating bottom-center pill, ?variant=A|B|C in the
+  URL, or left/right arrow keys. State is shared across variants.
+  Run it: double-click this file, no server or build step needed.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sideline</title>
+<style>
+  :root{
+    --bg:#f4f6f1;
+    --surface:#ffffff;
+    --surface-2:#eaefe6;
+    --border:#d6ddce;
+    --text:#152019;
+    --text-dim:#57685d;
+    --accent:#1f7a45;
+    --accent-ink:#ffffff;
+    --danger:#bd3b3b;
+    --goal:#1f7a45;
+    --assist:#2a5fa5;
+    --save:#7a44c2;
+    --duelw:#0f8f7a;
+    --duell:#a54f2a;
+    --extra:#5b6b7a;
+    --shadow:0 2px 10px rgba(20,30,20,0.12);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f1613;
+      --surface:#182019;
+      --surface-2:#202b23;
+      --border:#2d3a31;
+      --text:#edf2ec;
+      --text-dim:#9fb0a5;
+      --accent:#45c17a;
+      --accent-ink:#04180b;
+      --danger:#e2726c;
+      --goal:#45c17a;
+      --assist:#6ba0e6;
+      --save:#b892ec;
+      --duelw:#3fd2b8;
+      --duell:#e08a5f;
+      --extra:#93a4b3;
+      --shadow:0 2px 16px rgba(0,0,0,0.55);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f1613; --surface:#182019; --surface-2:#202b23; --border:#2d3a31;
+    --text:#edf2ec; --text-dim:#9fb0a5; --accent:#45c17a; --accent-ink:#04180b;
+    --danger:#e2726c; --goal:#45c17a; --assist:#6ba0e6; --save:#b892ec;
+    --duelw:#3fd2b8; --duell:#e08a5f; --extra:#93a4b3;
+    --shadow:0 2px 16px rgba(0,0,0,0.55);
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Barlow", -apple-system, "Segoe UI", Roboto, sans-serif;
+    min-height:100vh;
+    overscroll-behavior:none;
+  }
+  button{ font-family:inherit; border:none; cursor:pointer; color:inherit; background:none; }
+  input[type="checkbox"]{ accent-color:var(--accent); }
+  .clock-time, .score-num{ font-family:"Barlow Condensed","Barlow",sans-serif; font-variant-numeric:tabular-nums; }
+
+  #stage{ max-width:460px; margin:0 auto; min-height:100vh; position:relative; padding-bottom:64px; background:var(--bg); }
+
+  .section-label{ font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--text-dim); padding:14px 14px 6px; }
+  .section-label.dim{ opacity:.7; }
+
+  /* ---------- Shared shell: clock/score/bench ---------- */
+  .A-topbar{ position:sticky; top:0; z-index:5; background:var(--surface); border-bottom:1px solid var(--border); box-shadow:var(--shadow); padding:10px 12px; display:flex; flex-direction:column; gap:10px; }
+  .A-clockrow{ display:flex; align-items:center; justify-content:space-between; }
+  .clockpill{ display:flex; align-items:center; gap:8px; }
+  .clock-time{ font-size:22px; font-weight:600; }
+  .clock-time.stoppage{ color:var(--duell); }
+  .half-badge{ font-size:11px; font-weight:700; letter-spacing:.04em; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:2px 6px; }
+  .clockbtn{ width:34px; height:34px; border-radius:50%; background:var(--surface-2); display:flex; align-items:center; justify-content:center; font-size:14px; }
+  .A-scorerow{ display:flex; gap:8px; }
+  .scoreside{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:10px 6px; border-radius:12px; gap:2px; }
+  .scoreside.us{ background:color-mix(in srgb, var(--goal) 16%, var(--surface)); }
+  .scoreside.them{ background:color-mix(in srgb, var(--danger) 14%, var(--surface)); }
+  .scoreside .label{ font-size:11px; font-weight:700; letter-spacing:.08em; color:var(--text-dim); }
+  .scoreside .score-num{ font-size:34px; font-weight:700; line-height:1; }
+  .scoreside:active{ transform:scale(0.97); }
+  .attribBanner{ margin:10px 12px 0; background:color-mix(in srgb, var(--goal) 18%, var(--surface)); border:1px solid var(--goal); color:var(--text); font-size:13px; padding:8px 10px; border-radius:10px; display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .attribBanner button{ font-size:12px; font-weight:600; color:var(--text-dim); text-decoration:underline; }
+
+  .benchchips{ display:flex; flex-wrap:wrap; gap:6px; padding:2px 12px 12px; }
+  .chip{ background:var(--surface-2); border:1px dashed var(--border); border-radius:20px; padding:8px 12px; font-size:13px; font-weight:600; color:var(--text-dim); }
+  .chip:active{ transform:scale(0.96); }
+
+  .playerlist{ display:flex; flex-direction:column; gap:8px; padding:4px 12px 8px; }
+  .prow{ background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:8px 10px; display:flex; flex-direction:column; gap:6px; }
+  .prow-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .pname{ font-weight:600; font-size:14px; }
+  .offbtn{ background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:6px 8px; font-size:11px; font-weight:700; color:var(--text-dim); min-height:36px; flex:0 0 auto; }
+
+  /* core stat buttons (used in all 3 variants for the always-visible tier) */
+  .pstats-core{ display:flex; gap:6px; }
+  .statbtn{ flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--surface-2); border-radius:8px; padding:6px 2px; min-height:44px; justify-content:center; }
+  .statbtn .icon{ font-size:15px; }
+  .statbtn .count{ font-size:12px; font-weight:700; color:var(--c); }
+  .statbtn:active{ transform:scale(0.94); }
+
+  /* ===== Variant A: Inline Expand ===== */
+  .expandbtn{ font-size:11px; font-weight:700; color:var(--accent); background:var(--surface-2); border-radius:8px; padding:6px 8px; white-space:nowrap; flex:0 0 auto; }
+  .pstats-extra{ display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
+  .chip-extra{ display:flex; flex-direction:column; align-items:center; gap:2px; background:var(--surface-2); border:1px dashed var(--border); border-radius:8px; padding:6px 2px; min-height:40px; justify-content:center; }
+  .chip-extra .lbl{ font-size:9px; font-weight:800; letter-spacing:.02em; color:var(--c); }
+  .chip-extra .count{ font-size:12px; font-weight:800; }
+  .rowfoot{ display:flex; justify-content:flex-end; }
+
+  /* ===== Variant B: Quick Bar + Sheet ===== */
+  .quickbar{ display:flex; align-items:center; gap:8px; padding:8px 12px 0; font-size:12px; color:var(--text-dim); flex-wrap:wrap; }
+  .quickbar b{ color:var(--text); }
+  .editbtn{ margin-left:auto; font-size:11px; font-weight:700; color:var(--accent); text-decoration:underline; background:none; }
+  .morebtn{ font-size:11px; font-weight:700; color:var(--text-dim); background:var(--surface-2); border-radius:8px; padding:6px 8px; flex:0 0 auto; }
+
+  /* ===== Variant C: Row Tap + Sheet ===== */
+  .rowtap{ cursor:pointer; }
+  .favrow{ display:flex; gap:6px; }
+  .favbtn{ display:flex; align-items:center; gap:6px; background:var(--surface-2); border-radius:8px; padding:8px 12px; font-size:14px; font-weight:700; min-height:40px; }
+  .favbtn .count{ font-size:13px; color:var(--c); }
+  .psummary{ font-size:12px; color:var(--text-dim); }
+
+  /* ---------- Shared: bottom sheet / modal ---------- */
+  .sheet-backdrop{ position:fixed; inset:0; background:rgba(10,15,10,0.45); z-index:40; display:flex; align-items:flex-end; justify-content:center; }
+  .sheet-panel{ width:100%; max-width:460px; background:var(--surface); border-radius:20px 20px 0 0; padding:14px; box-shadow:var(--shadow); max-height:80vh; overflow-y:auto; }
+  .sheet-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; gap:8px; }
+  .sheet-title{ font-size:16px; font-weight:700; }
+  .sheet-close{ font-size:13px; color:var(--text-dim); text-decoration:underline; flex:0 0 auto; }
+  .sheet-grid{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .sheet-tile{ display:flex; align-items:center; gap:8px; background:var(--surface-2); border-radius:12px; padding:10px; min-height:52px; }
+  .sheet-tile .icon{ font-size:18px; width:20px; text-align:center; }
+  .sheet-tile .lbl{ font-size:12px; font-weight:600; flex:1; text-align:left; }
+  .sheet-tile .count{ font-size:15px; font-weight:800; }
+  .sheet-foot{ display:flex; gap:8px; margin-top:10px; }
+  .sheet-foot button{ flex:1; background:var(--surface-2); border-radius:10px; padding:10px; font-weight:700; font-size:13px; }
+  .checklimit{ font-size:11px; color:var(--text-dim); margin-bottom:8px; }
+  .checklist{ display:flex; flex-direction:column; gap:6px; }
+  .checkrow{ display:flex; align-items:center; gap:10px; background:var(--surface-2); border-radius:10px; padding:10px 12px; font-size:13px; font-weight:600; }
+  .checkrow.disabled{ opacity:.4; }
+  .checkrow input{ width:18px; height:18px; flex:0 0 auto; }
+
+  /* ---------- Switcher ---------- */
+  #switcher{ position:fixed; left:50%; bottom:10px; transform:translateX(-50%); z-index:50; display:flex; align-items:center; gap:6px; background:#1a1f1c; color:#fff; border-radius:999px; padding:6px; box-shadow:0 4px 18px rgba(0,0,0,0.35); font-size:12px; }
+  #switcher button.arrow{ width:30px; height:30px; border-radius:50%; background:rgba(255,255,255,0.12); font-size:14px; display:flex; align-items:center; justify-content:center; }
+  #switcher button.arrow:active{ background:rgba(255,255,255,0.24); }
+  #switcher .vlabel{ font-weight:700; padding:0 4px; white-space:nowrap; }
+  #switcher .resetbtn{ font-size:10px; color:rgba(255,255,255,0.6); text-decoration:underline; padding:0 4px; }
+</style>
+
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700;800&family=Barlow+Condensed:wght@600;700&display=swap">
+
+</head>
+<body>
+<div id="stage"></div>
+<div id="switcher"></div>
+
+<script>
+(function(){
+  const VARIANTS = [
+    {key:'A', name:'Inline Expand'},
+    {key:'B', name:'Quick Bar + Sheet'},
+    {key:'C', name:'Row Tap + Sheet'},
+  ];
+
+  // Core 5 = today's committed Stat Line fields (see CONTEXT.md). Extra 6 are
+  // placeholder stat types to stress-test the ">5 stats" case — not a domain
+  // decision yet, just enough variety to see how each layout scales.
+  const CORE_STATS = [
+    {key:'g',  label:'Goal',      short:'Goal',   icon:'⚽', color:'var(--goal)'},
+    {key:'a',  label:'Assist',    short:'Assist', icon:'🎯', color:'var(--assist)'},
+    {key:'sv', label:'Save',      short:'Save',   icon:'🧤', color:'var(--save)'},
+    {key:'dw', label:'Duel Won',  short:'Duel W', icon:'💪', color:'var(--duelw)'},
+    {key:'dl', label:'Duel Lost', short:'Duel L', icon:'↩',  color:'var(--duell)'},
+  ];
+  const EXTRA_STATS = [
+    {key:'sh', label:'Shot',           short:'SHOT',   icon:'🥅', color:'var(--extra)'},
+    {key:'tk', label:'Tackle Won',     short:'TACKLE', icon:'🛡️', color:'var(--extra)'},
+    {key:'it', label:'Interception',   short:'INTC',   icon:'✋',  color:'var(--extra)'},
+    {key:'fc', label:'Foul Committed', short:'F-CO',   icon:'🟨', color:'var(--extra)'},
+    {key:'fw', label:'Foul Won',       short:'F-WON',  icon:'🚩', color:'var(--extra)'},
+    {key:'cl', label:'Clearance',      short:'CLR',    icon:'🧹', color:'var(--extra)'},
+  ];
+  const ALL_STATS = CORE_STATS.concat(EXTRA_STATS);
+  const DEFAULT_QUICK = CORE_STATS.map(s=>s.key);
+
+  const NAMES = ["Nora","Mia","Ellie","Ruby","Ivy","Freya","Zoe","Luna","Aria","Nina","Wren","Sage"];
+
+  function emptyStats(){
+    const o = {};
+    ALL_STATS.forEach(s=>o[s.key]=0);
+    return o;
+  }
+  function freshPlayers(){
+    return NAMES.map((name,i)=>({
+      id:i+1, num:i+1, name,
+      onField: i<7,
+      stats: emptyStats(),
+    }));
+  }
+
+  const HALF_LEN = 25*60;
+  function freshState(variant){
+    return {
+      variant: variant,
+      players: freshPlayers(),
+      score:{us:0, them:0},
+      clock:{ half:1, remaining:HALF_LEN, stoppage:0, running:false, ended:false },
+      pendingAttribution:false,
+      expandedIds: new Set(),
+      quickStatKeys: DEFAULT_QUICK.slice(),
+      quickEditOpen:false,
+      sheetForPlayerId:null,
+    };
+  }
+  let state = freshState(getVariantFromURL());
+  let timer = null;
+
+  function getVariantFromURL(){
+    try{
+      const v = new URLSearchParams(window.location.search).get('variant');
+      return ['A','B','C'].includes(v) ? v : 'A';
+    }catch(e){ return 'A'; }
+  }
+  function setVariantURL(v){
+    try{
+      const url = new URL(window.location.href);
+      url.searchParams.set('variant', v);
+      window.history.replaceState({}, '', url);
+    }catch(e){ /* file:// or sandboxed — ignore */ }
+  }
+
+  function fmt(sec){
+    sec = Math.max(0, Math.round(sec));
+    const m = Math.floor(sec/60), s = sec%60;
+    return m + ':' + String(s).padStart(2,'0');
+  }
+  function clockText(){
+    return state.clock.remaining > 0 ? fmt(state.clock.remaining) : '+' + fmt(state.clock.stoppage);
+  }
+
+  function tick(){
+    if(state.clock.remaining > 0) state.clock.remaining--;
+    else state.clock.stoppage++;
+    render();
+  }
+  window.startClock = function(){
+    if(state.clock.running) return;
+    state.clock.running = true;
+    state.clock.ended = false;
+    timer = setInterval(tick, 1000);
+    render();
+  };
+  window.pauseClock = function(){
+    state.clock.running = false;
+    clearInterval(timer);
+    render();
+  };
+  window.endHalf = function(){
+    window.pauseClock();
+    state.clock.ended = true;
+    render();
+  };
+  window.startSecondHalf = function(){
+    state.clock.half = 2;
+    state.clock.remaining = HALF_LEN;
+    state.clock.stoppage = 0;
+    state.clock.ended = false;
+    window.startClock();
+  };
+
+  window.scoreDelta = function(team, delta){
+    state.score[team] = Math.max(0, state.score[team] + delta);
+    if(team === 'us' && delta > 0) state.pendingAttribution = true;
+    render();
+  };
+  window.dismissAttribution = function(){ state.pendingAttribution = false; render(); };
+
+  window.toggleField = function(id){
+    const p = state.players.find(p=>p.id===id);
+    p.onField = !p.onField;
+    render();
+  };
+  window.bump = function(id, key){
+    const p = state.players.find(p=>p.id===id);
+    p.stats[key] = Math.max(0, p.stats[key] + 1);
+    if(key === 'g') state.pendingAttribution = false;
+    render();
+  };
+
+  window.toggleRowExpand = function(id){
+    if(state.expandedIds.has(id)) state.expandedIds.delete(id); else state.expandedIds.add(id);
+    render();
+  };
+  window.toggleQuickEdit = function(){ state.quickEditOpen = !state.quickEditOpen; render(); };
+  window.toggleQuickKey = function(key){
+    const i = state.quickStatKeys.indexOf(key);
+    if(i>=0) state.quickStatKeys.splice(i,1);
+    else { if(state.quickStatKeys.length>=5) return; state.quickStatKeys.push(key); }
+    render();
+  };
+  window.openSheet = function(id){ state.sheetForPlayerId = id; render(); };
+  window.closeSheet = function(){ state.sheetForPlayerId = null; render(); };
+  window.closeSheetIfBackdrop = function(el, closer){ if(event.target===el) window[closer](); };
+
+  window.resetDemo = function(){
+    clearInterval(timer);
+    state = freshState(state.variant);
+    render();
+  };
+
+  window.goVariant = function(dir){
+    const idx = VARIANTS.findIndex(v=>v.key===state.variant);
+    const next = VARIANTS[(idx + dir + VARIANTS.length) % VARIANTS.length];
+    state.variant = next.key;
+    setVariantURL(next.key);
+    render();
+  };
+
+  function playerById(id){ return state.players.find(p=>p.id===id); }
+  function onFieldPlayers(){ return state.players.filter(p=>p.onField); }
+  function benchPlayers(){ return state.players.filter(p=>!p.onField); }
+
+  /* ---------------- Shared shell ---------------- */
+  function topbarShell(){
+    return '<div class="A-topbar">'
+      + '<div class="A-clockrow">'
+      +   '<div class="clockpill"><span class="half-badge">H'+state.clock.half+'</span>'
+      +     '<span class="clock-time '+(state.clock.remaining===0?'stoppage':'')+'">'+clockText()+'</span>'
+      +     '<button class="clockbtn" onclick="'+(state.clock.running?'pauseClock()':'startClock()')+'">'+(state.clock.running?'⏸':'▶')+'</button>'
+      +   '</div>'
+      +   (state.clock.ended
+            ? '<button class="chip" onclick="startSecondHalf()">Start 2nd Half ▶</button>'
+            : '<button class="chip" onclick="endHalf()">End Half ⏹</button>')
+      + '</div>'
+      + '<div class="A-scorerow">'
+      +   '<button class="scoreside us" onclick="scoreDelta(\'us\',1)"><span class="label">US</span><span class="score-num">'+state.score.us+'</span></button>'
+      +   '<button class="scoreside them" onclick="scoreDelta(\'them\',1)"><span class="label">THEM</span><span class="score-num">'+state.score.them+'</span></button>'
+      + '</div>'
+      + '</div>';
+  }
+  function attribBannerMaybe(){
+    return state.pendingAttribution ? '<div class="attribBanner"><span>Goal scored — tap a player\'s ⚽ below to credit it.</span><button onclick="dismissAttribution()">skip</button></div>' : '';
+  }
+  function benchSection(bench){
+    return '<div class="section-label dim">Bench ('+bench.length+')</div>'
+      + '<div class="benchchips">'+bench.map(p=>
+          '<button class="chip" onclick="toggleField('+p.id+')">#'+p.num+' '+p.name+' ⬆</button>'
+        ).join('')+'</div>';
+  }
+  function statBtnCore(p, s){
+    return '<button class="statbtn" style="--c:'+s.color+'" onclick="bump('+p.id+',\''+s.key+'\')">'
+      + '<span class="icon">'+s.icon+'</span><span class="count">'+p.stats[s.key]+'</span></button>';
+  }
+  function chipExtra(p, s){
+    return '<button class="chip-extra" style="--c:'+s.color+'" onclick="bump('+p.id+',\''+s.key+'\')">'
+      + '<span class="lbl">'+s.short+'</span><span class="count">'+p.stats[s.key]+'</span></button>';
+  }
+  function sheetTile(p, s){
+    return '<button class="sheet-tile" onclick="bump('+p.id+',\''+s.key+'\')">'
+      + '<span class="icon">'+(s.icon||'')+'</span>'
+      + '<span class="lbl">'+s.label+'</span>'
+      + '<span class="count" style="color:'+s.color+'">'+p.stats[s.key]+'</span></button>';
+  }
+  function statSheetMarkup(p){
+    return '<div class="sheet-backdrop" onclick="closeSheetIfBackdrop(this,\'closeSheet\')">'
+      + '<div class="sheet-panel">'
+      +   '<div class="sheet-header"><div class="sheet-title">#'+p.num+' '+p.name+' — all stats</div><button class="sheet-close" onclick="closeSheet()">close</button></div>'
+      +   '<div class="sheet-grid">'+ALL_STATS.map(s=>sheetTile(p,s)).join('')+'</div>'
+      +   '<div class="sheet-foot"><button onclick="toggleField('+p.id+'); closeSheet();">Sub Off</button></div>'
+      + '</div></div>';
+  }
+  function quickEditModal(){
+    return '<div class="sheet-backdrop" onclick="closeSheetIfBackdrop(this,\'toggleQuickEdit\')">'
+      + '<div class="sheet-panel">'
+      +   '<div class="sheet-header"><div class="sheet-title">Quick Stats</div><button class="sheet-close" onclick="toggleQuickEdit()">done</button></div>'
+      +   '<div class="checklimit">Pick up to 5 — these show inline on every row. Everything else stays one tap away in "⋯ More".</div>'
+      +   '<div class="checklist">'+ALL_STATS.map(s=>{
+            const checked = state.quickStatKeys.includes(s.key);
+            const disabled = !checked && state.quickStatKeys.length>=5;
+            return '<label class="checkrow '+(disabled?'disabled':'')+'">'
+              + '<input type="checkbox" '+(checked?'checked':'')+' '+(disabled?'disabled':'')+' onchange="toggleQuickKey(\''+s.key+'\')">'
+              + '<span>'+(s.icon||'')+' '+s.label+'</span></label>';
+          }).join('')+'</div>'
+      + '</div></div>';
+  }
+  function summaryText(p){
+    const parts = ALL_STATS.filter(s=>p.stats[s.key]>0).map(s=>p.stats[s.key]+' '+s.short);
+    return parts.length ? parts.join(' · ') : 'No stats recorded yet';
+  }
+
+  /* ---------------- Variant A: Inline Expand ---------------- */
+  function renderA(){
+    const on = onFieldPlayers(), bench = benchPlayers();
+    return topbarShell() + attribBannerMaybe()
+    + '<div class="section-label">On Field ('+on.length+')</div>'
+    + '<div class="playerlist">'+on.map(p=>{
+        const expanded = state.expandedIds.has(p.id);
+        return '<div class="prow">'
+          + '<div class="prow-head"><div class="pname">#'+p.num+' '+p.name+'</div>'
+          +   '<button class="expandbtn" onclick="toggleRowExpand('+p.id+')">'+(expanded?'▴ Less':'▾ More ('+EXTRA_STATS.length+')')+'</button></div>'
+          + '<div class="pstats-core">'+CORE_STATS.map(s=>statBtnCore(p,s)).join('')+'</div>'
+          + (expanded ? '<div class="pstats-extra">'+EXTRA_STATS.map(s=>chipExtra(p,s)).join('')+'</div>' : '')
+          + '<div class="rowfoot"><button class="offbtn" onclick="toggleField('+p.id+')">OUT</button></div>'
+          + '</div>';
+      }).join('')+'</div>'
+    + benchSection(bench);
+  }
+
+  /* ---------------- Variant B: Quick Bar + Sheet ---------------- */
+  function renderB(){
+    const on = onFieldPlayers(), bench = benchPlayers();
+    const quick = state.quickStatKeys.map(k=>ALL_STATS.find(s=>s.key===k));
+    return topbarShell() + attribBannerMaybe()
+    + '<div class="quickbar">Quick stats: <b>'+quick.map(s=>s.short).join(', ')+'</b><button class="editbtn" onclick="toggleQuickEdit()">Edit</button></div>'
+    + '<div class="section-label">On Field ('+on.length+')</div>'
+    + '<div class="playerlist">'+on.map(p=>
+        '<div class="prow">'
+        + '<div class="prow-head"><div class="pname">#'+p.num+' '+p.name+'</div>'
+        +   '<button class="morebtn" onclick="openSheet('+p.id+')">⋯ More</button></div>'
+        + '<div class="pstats-core">'+quick.map(s=>statBtnCore(p,s)).join('')+'<button class="offbtn" onclick="toggleField('+p.id+')">OUT</button></div>'
+        + '</div>'
+      ).join('')+'</div>'
+    + benchSection(bench)
+    + (state.quickEditOpen ? quickEditModal() : '')
+    + (state.sheetForPlayerId ? statSheetMarkup(playerById(state.sheetForPlayerId)) : '');
+  }
+
+  /* ---------------- Variant C: Row Tap + Sheet ---------------- */
+  function renderC(){
+    const on = onFieldPlayers(), bench = benchPlayers();
+    const FAV = [CORE_STATS[0], CORE_STATS[1]]; // Goal, Assist — the two most frequent taps
+    return topbarShell() + attribBannerMaybe()
+    + '<div class="section-label">On Field ('+on.length+') — tap a row for full stats</div>'
+    + '<div class="playerlist">'+on.map(p=>
+        '<div class="prow">'
+        + '<div class="prow-head rowtap" onclick="openSheet('+p.id+')"><div class="pname">#'+p.num+' '+p.name+'</div>'
+        +   '<button class="offbtn" onclick="event.stopPropagation(); toggleField('+p.id+')">OUT</button></div>'
+        + '<div class="favrow">'+FAV.map(s=>
+            '<button class="favbtn" onclick="event.stopPropagation(); bump('+p.id+',\''+s.key+'\')">'+s.icon+'<span class="count" style="color:'+s.color+'">'+p.stats[s.key]+'</span></button>'
+          ).join('')+'</div>'
+        + '<div class="psummary rowtap" onclick="openSheet('+p.id+')">'+summaryText(p)+'</div>'
+        + '</div>'
+      ).join('')+'</div>'
+    + benchSection(bench)
+    + (state.sheetForPlayerId ? statSheetMarkup(playerById(state.sheetForPlayerId)) : '');
+  }
+
+  function renderSwitcher(){
+    const cur = VARIANTS.find(v=>v.key===state.variant);
+    document.getElementById('switcher').innerHTML =
+      '<button class="arrow" onclick="goVariant(-1)">‹</button>'
+      + '<span class="vlabel">'+cur.key+' · '+cur.name+'</span>'
+      + '<button class="arrow" onclick="goVariant(1)">›</button>'
+      + '<button class="resetbtn" onclick="resetDemo()">reset</button>';
+  }
+
+  function render(){
+    const stage = document.getElementById('stage');
+    stage.className = 'variant'+state.variant;
+    if(state.variant==='A') stage.innerHTML = renderA();
+    else if(state.variant==='B') stage.innerHTML = renderB();
+    else stage.innerHTML = renderC();
+    renderSwitcher();
+  }
+
+  document.addEventListener('keydown', (e)=>{
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if(tag==='INPUT' || tag==='TEXTAREA' || (document.activeElement && document.activeElement.isContentEditable)) return;
+    if(e.key==='ArrowLeft') window.goVariant(-1);
+    if(e.key==='ArrowRight') window.goVariant(1);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
