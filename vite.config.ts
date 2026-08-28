@@ -4,30 +4,38 @@ import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [
-    react(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.jpg'],
-      manifest: {
-        name: 'Slammer Stats',
-        short_name: 'Slammer',
-        description: 'Live sideline stat tracking for a youth soccer team.',
-        theme_color: '#1f7a45',
-        background_color: '#f4f6f1',
-        display: 'standalone',
-        start_url: '/',
-        icons: [{ src: '/favicon.jpg', sizes: '512x512', type: 'image/jpeg', purpose: 'any' }],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,jpg,png,ico}'],
-      },
-    }),
-  ],
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-  },
+export default defineConfig(({ command }) => {
+  // GitHub Pages serves this as a project site at /slammer-stats/, not the domain
+  // root, so every root-relative asset path needs that prefix in production builds.
+  const base = command === 'build' ? '/slammer-stats/' : '/'
+
+  return {
+    base,
+    plugins: [
+      react(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        includeAssets: ['favicon.jpg'],
+        manifest: {
+          name: 'Slammer Stats',
+          short_name: 'Slammer',
+          description: 'Live sideline stat tracking for a youth soccer team.',
+          theme_color: '#1f7a45',
+          background_color: '#f4f6f1',
+          display: 'standalone',
+          start_url: base,
+          scope: base,
+          icons: [{ src: `${base}favicon.jpg`, sizes: '512x512', type: 'image/jpeg', purpose: 'any' }],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,jpg,png,ico}'],
+        },
+      }),
+    ],
+    test: {
+      environment: 'jsdom',
+      globals: true,
+      setupFiles: ['./src/test/setup.ts'],
+    },
+  }
 })
