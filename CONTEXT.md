@@ -28,7 +28,7 @@ An attempt on goal by a Player, tallied independently on the Stat Line. Recordin
 _Avoid_: Attempt
 
 **Score**:
-The live running tally of goals for and against, kept on the Game itself and updated in real time as goals happen. It is tracked independently of the goals recorded on individual Stat Lines — attributing a goal to a specific Player is a separate, optional action from updating the Score, so the two are not guaranteed to reconcile perfectly.
+The live running tally of goals for and against, kept on the Game itself and updated in real time as goals happen. Crediting a Player with a Goal automatically increments the Score for us by one, since that's the common case. The Score can still be updated directly and independently of any Player's Stat Line (the two dedicated tap targets on the Game) — for an opponent's goal, or a goal you don't want to attribute to a specific Player yet — so the two are not *guaranteed* to reconcile, even though the common path keeps them in sync.
 
 **Game Clock**:
 A countdown timer for one half of a Game, with a length entered fresh each Game (halves are always equal length within a Game, but length varies game to game). Continues counting up past 0:00 as stoppage time until manually ended; a manual "Start Second Half" action begins the next countdown. Used together with per-Player in/out toggles to compute minutes played.

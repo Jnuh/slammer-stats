@@ -81,10 +81,14 @@ const counterAppliers: Record<CounterStat, (l: statLine.StatLine) => statLine.St
   dribble: statLine.recordDribble,
 }
 
+/** Crediting a player's Goal also bumps the Score, since that's the common case — the direct Score buttons stay available for opponent goals or a goal you don't want to attribute to a player yet. */
 export async function recordCounterStat(gameId: number, playerId: number, stat: CounterStat) {
-  const line = await db.statLines.where({ gameId, playerId }).first()
-  if (!line) return
-  await db.statLines.update(line.id, counterAppliers[stat](line))
+  await db.transaction('rw', db.games, db.statLines, async () => {
+    const line = await db.statLines.where({ gameId, playerId }).first()
+    if (!line) return
+    await db.statLines.update(line.id, counterAppliers[stat](line))
+    if (stat === 'goal') await addScore(gameId, 'us')
+  })
 }
 
 async function recordCardAndMaybeBench(gameId: number, playerId: number, apply: (l: statLine.StatLine) => statLine.StatLine) {

@@ -4,6 +4,7 @@ import {
   addScore,
   endHalf,
   joinGame,
+  recordCounterStat,
   recordRedCard,
   recordYellowCard,
   startSecondHalf,
@@ -55,6 +56,41 @@ describe('liveGame repo', () => {
     const game = await db.games.get(gameId)
     expect(game?.scoreUs).toBe(2)
     expect(game?.scoreThem).toBe(1)
+  })
+
+  it('crediting a player with a goal also bumps the score for us', async () => {
+    const { gameId, playerId } = await setupGame()
+    await joinGame(gameId, playerId)
+
+    await recordCounterStat(gameId, playerId, 'goal')
+
+    const game = await db.games.get(gameId)
+    expect(game?.scoreUs).toBe(1)
+    const line = await db.statLines.where({ gameId, playerId }).first()
+    expect(line?.goals).toBe(1)
+  })
+
+  it('other counter stats do not touch the score', async () => {
+    const { gameId, playerId } = await setupGame()
+    await joinGame(gameId, playerId)
+
+    await recordCounterStat(gameId, playerId, 'assist')
+    await recordCounterStat(gameId, playerId, 'shot')
+
+    const game = await db.games.get(gameId)
+    expect(game?.scoreUs).toBe(0)
+  })
+
+  it('the direct score button still works independently, without crediting any player', async () => {
+    const { gameId, playerId } = await setupGame()
+    await joinGame(gameId, playerId)
+
+    await addScore(gameId, 'them')
+
+    const game = await db.games.get(gameId)
+    expect(game?.scoreThem).toBe(1)
+    const line = await db.statLines.where({ gameId, playerId }).first()
+    expect(line?.goals).toBe(0)
   })
 
   it('a red card immediately benches the player and closes their open interval', async () => {

@@ -48,7 +48,8 @@ Reference: `prototypes/live-game-ui.prototype.html` for the validated shell (sti
 
 **Score**:
 - Two tap targets, "+1" for us / for them, directly on the Game — increments immediately, no confirmation
-- Fully decoupled from player goal credit (do not try to reconcile them)
+- Crediting a player's Goal (below) also increments the "us" score by one, in the same action — this is the common path and keeps the two in sync automatically
+- The direct tap targets stay available as an override for cases the player-goal path can't cover: an opponent's goal, or a goal you don't want to attribute to a specific player yet. Using them does not touch any Stat Line, so score and goal credit can still drift apart in those cases — don't try to force-reconcile them
 
 **Roster / on-field management**:
 - A picker (from the Season's Roster) to bring a player into the Game for the first time — this is what creates their Stat Line (implicit attendance, per CONTEXT.md)
