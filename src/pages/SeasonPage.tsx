@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { teamRecord } from '../domain/record'
 import { computeSeasonTotals } from '../domain/seasonTotals'
 import { clockState } from '../db/liveGame'
-import { createGame, createPlayer, listGamesForSeason, listPlayersForSeason } from '../db/repo'
+import { createGame, createPlayer, deleteSeason, listGamesForSeason, listPlayersForSeason } from '../db/repo'
 import { db } from '../db/schema'
 
 async function loadSeasonStats(seasonId: number) {
@@ -56,6 +56,16 @@ export default function SeasonPage() {
   ) : []
 
   const record = data ? teamRecord(data.games.map((g) => ({ scoreUs: g.scoreUs, scoreThem: g.scoreThem }))) : { wins: 0, losses: 0, draws: 0 }
+
+  async function handleDeleteSeason() {
+    if (!season) return
+    const confirmed = window.confirm(
+      `Delete "${season.label}"? This permanently removes its roster, all games, and every stat recorded in them. This cannot be undone.`,
+    )
+    if (!confirmed) return
+    await deleteSeason(seasonId)
+    navigate(team ? `/teams/${team.id}` : '/')
+  }
 
   return (
     <div className="page">
@@ -176,6 +186,13 @@ export default function SeasonPage() {
           Add Player
         </button>
       </form>
+
+      <div className="section-label" style={{ marginTop: 32 }}>
+        Danger Zone
+      </div>
+      <button className="btn danger" onClick={handleDeleteSeason}>
+        Delete Season
+      </button>
     </div>
   )
 }

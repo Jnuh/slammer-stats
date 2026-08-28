@@ -1,11 +1,12 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { db } from '../db/schema'
-import { createSeason, listSeasonsForTeam } from '../db/repo'
+import { createSeason, deleteTeam, listSeasonsForTeam } from '../db/repo'
 
 export default function TeamPage() {
   const teamId = Number(useParams().teamId)
+  const navigate = useNavigate()
   const team = useLiveQuery(() => db.teams.get(teamId), [teamId])
   const seasons = useLiveQuery(() => listSeasonsForTeam(teamId), [teamId])
   const [label, setLabel] = useState('')
@@ -16,6 +17,16 @@ export default function TeamPage() {
     if (!trimmed) return
     await createSeason(teamId, trimmed)
     setLabel('')
+  }
+
+  async function handleDeleteTeam() {
+    if (!team) return
+    const confirmed = window.confirm(
+      `Delete "${team.name}"? This permanently removes every season, roster, game, and stat recorded under it. This cannot be undone.`,
+    )
+    if (!confirmed) return
+    await deleteTeam(teamId)
+    navigate('/')
   }
 
   return (
@@ -44,6 +55,13 @@ export default function TeamPage() {
           Add Season
         </button>
       </form>
+
+      <div className="section-label" style={{ marginTop: 32 }}>
+        Danger Zone
+      </div>
+      <button className="btn danger" onClick={handleDeleteTeam}>
+        Delete Team
+      </button>
     </div>
   )
 }
